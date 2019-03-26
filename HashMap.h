@@ -1,274 +1,241 @@
-#include <iostream>
-#include <cmath>
-#include <algorithm>
-#include <initializer_list>
+#pragma once
+#include <exception>
+#include <functional>
+#include <iterator>
 #include <list>
-#include <stdexcept>
-#include <utility>
 #include <vector>
+#include <iostream>
 
-using namespace std;
+namespace MyHashMap {
+    template<class KeyType, class ValueType, class Hash = std::hash<KeyType>>
+    class HashMap {
+     private:
+        typedef std::list<std::pair<KeyType, ValueType>> Cell;
+        template <class OuterIter, class InnerIter>
+        class base_iterator_ {
+        public:
+            base_iterator_() {}
 
-template <class KeyType, class ValueType, class Hash = hash<KeyType>> class HashMap {
-private:
-    list<pair<const KeyType, ValueType>>* list_iter = new list<pair<const KeyType, ValueType>>();
-    const typename list<pair<const KeyType, ValueType>>::iterator End = list_iter->begin();
-    const typename list<pair<const KeyType, ValueType>>::const_iterator End_const = list_iter->begin();
-    list<list<pair<const KeyType, ValueType>>*>* cur_sized = new list<list<pair<const KeyType, ValueType>>*>();
-    const typename list<list<pair<const KeyType, ValueType>>*>::iterator e_table = cur_sized->begin();
-    Hash hasher;
-    size_t cur_size = 0;
-    vector<typename list<list<pair<const KeyType, ValueType>>*>::iterator> table;
-    list<list<pair<const KeyType, ValueType>>*> links;
-    void _insert(const pair<KeyType, ValueType>& pr) {
-        if (table.size() == 0) {
-            table.resize(1, e_table);
-        }
-        size_t k = hasher(pr.first) % table.size();
-        if (table[k] == e_table) {
-            links.push_back(new list<pair<const KeyType, ValueType>>());
-            auto it = links.end();
-            table[k] = --it;
-        }
-        if (find(pr.first) == end()) {
-            (*table[k])->push_back(pr);
-            ++cur_size;
-        }
-    }
-    bool _check_cur_size() {
-        if (2 * cur_size < table.size()) {
-            return false;
-        }
-        size_t k = table.size();
-        table.clear();
-        table.resize(k << 1, e_table);
-        list<list<pair<const KeyType, ValueType>>*> buff = move(links);
-        links.clear();
-        cur_size = 0;
-        for (typename list<list<pair<const KeyType, ValueType>>*>::iterator ind = buff.begin(); ind != buff.end(); ++ind) {
-            for (const auto& elem : **ind) {
-                _insert(elem);
+            base_iterator_(OuterIter from_outer,
+                           InnerIter from_inner,
+                           OuterIter from_table_end)
+                    : outer_(from_outer), inner_(from_inner), end_of_table_(from_table_end) {
+                if (outer_ != end_of_table_ && inner_ == outer_->end())
+                    ++(*this);
             }
-            delete *ind;
-        }
-        return true;
-    }
-public:
-    HashMap(Hash h = Hash()): hasher(h) {}
-    size_t size() const {
-        return cur_size;
-    }
-    bool empty() const {
-        return cur_size == 0;
-    }
-    Hash hash_function() const {
-        return hasher;
-    }
-    template <class Iter>
-    HashMap(const Iter& begin, const Iter& end, Hash h = Hash()): hasher(h) {
-        auto x = begin;
-        size_t cnt = 0;
-        while (x != end) {
-            cnt++;
-            x++;
-        }
-        table.resize(cnt << 1, e_table);
-        for (Iter it = begin; it != end; ++it)
-            _insert(*it);
-    }
-    HashMap(initializer_list<pair<KeyType, ValueType>> init, Hash h = Hash()): hasher(h) {
-        table.resize(init.size() << 1, e_table);
-        for (const auto& it : init) {
-            _insert(it);
-        }
-    }
-    HashMap(const HashMap& mp) {
-        table.resize(mp.size() << 1, e_table);
-        for (const auto& it : mp)
-            _insert(it);
-    }
-    HashMap& operator=(const HashMap& other) {
-        if (&other == this) {
-            return *this;
-        }
-        table.clear();
-        table.resize(other.size() << 1, e_table);
-        for (list<pair<const KeyType, ValueType>>* link : links) {
-            delete link;
-        }
-        cur_size = 0;
-        links.clear();
-        for (auto it : other)
-            _insert(it);
-        return *this;
-    }
-    ~HashMap() {
-        for (list<pair<const KeyType, ValueType>>* link : links) {
-            delete link;
-        }
-        delete list_iter;
-        delete cur_sized;
-        links.clear();
-    }
 
-    class iterator : public std::iterator<input_iterator_tag, ValueType> {
-        list<list<pair<const KeyType, ValueType>>*>* links;
-        typename list<list<pair<const KeyType, ValueType>>*>::iterator link;
-        typename list<pair<const KeyType, ValueType>>::iterator elem;
-        friend void HashMap::erase(const KeyType& key);
-    public:
-        iterator() : links(nullptr) {}
-        iterator(list<list<pair<const KeyType, ValueType>>*>* links, typename list<list<pair<const KeyType, ValueType>>*>::iterator link, typename list<pair<const KeyType, ValueType>>::iterator elem) : links(links), link(link), elem(elem) {}
-        pair<const KeyType, ValueType>& operator*() {
-            return *elem;
-        }
-        typename list<pair<const KeyType, ValueType>>::iterator operator->() {
-            return elem;
-        }
-        iterator& operator++() {
-            ++elem;
-            if (elem == (*link)->end()) {
-                ++link;
-                if (link != links->end())
-                    elem = (*link)->begin();
+            base_iterator_ &operator++() {
+                if (outer_ == end_of_table_) {
+                    return *this;
+                }
+                if (inner_ != outer_->end())
+                    inner_++;
+                while (outer_ != end_of_table_ && inner_ == outer_->end()) {
+                    outer_++;
+                    if (outer_ != end_of_table_)
+                        inner_ = outer_->begin();
+                }
+                return *this;
             }
-            return *this;
-        }
-        iterator operator++(int) {
-            iterator buff = *this;
-            ++elem;
-            if (elem == (*link)->end()) {
-                ++link;
-                if (link != links->end())
-                    elem = (*link)->begin();
-            }
-            return buff;
-        }
-        bool operator!=(const iterator& other) {
-            return links != other.links || link != other.link ||
-                   (link != links->end() && *elem != *(other.elem));
-        }
-        bool operator==(const iterator& other) {
-            return links == other.links && link == other.link &&
-                   (link == links->end() || *elem == *(other.elem));
-        }
-    };
-    iterator begin() {
-        return {&links, links.begin(), links.empty() ? End : (*links.begin())->begin()};
-    }
-    iterator end() {
-        return {&links, links.end(), End};
-    }
 
-    class const_iterator : public std::iterator<input_iterator_tag, ValueType> {
-        const list<list<pair<const KeyType, ValueType>>*>* links;
-        typename list<list<pair<const KeyType, ValueType>>*>::const_iterator link;
-        typename list<pair<const KeyType, ValueType>>::const_iterator elem;
-    public:
-        const_iterator() : links(nullptr) {}
-        const_iterator(const list<list<pair<const KeyType, ValueType>>*>* links, typename list<list<pair<const KeyType, ValueType>>*>::const_iterator link, typename list<pair<const KeyType, ValueType>>::const_iterator elem) : links(links), link(link), elem(elem) {}
-        const pair<const KeyType, ValueType>& operator*() const {
-            return *elem;
-        }
-        typename list<pair<const KeyType, ValueType>>::const_iterator operator->() {
-            return elem;
-        }
-        const_iterator& operator++() {
-            ++elem;
-            if (elem == (*link)->end()) {
-                ++link;
-                if (link != links->end())
-                    elem = (*link)->begin();
+            base_iterator_ operator++(int) {
+                base_iterator_ buff(*this);
+                ++(*this);
+                return buff;
             }
-            return *this;
-        }
-        const_iterator operator++(int) {
-            const_iterator buff = *this;
-            ++elem;
-            if (elem == (*link)->end()) {
-                ++link;
-                if (link != links->end())
-                    elem = (*link)->begin();
-            }
-            return buff;
-        }
-        bool operator!=(const const_iterator& other) {
-            return links != other.links || link != other.link ||
-                   (link != links->end() && elem != other.elem);
-        }
-        bool operator==(const const_iterator& other) {
-            return links == other.links && link == other.link &&
-                   (link == links->end() || elem == other.elem);
-        }
-    };
-    const_iterator begin() const {
-        return {&links, links.begin(), links.empty() ? End_const : (*(links.begin()))->begin()};
-    }
-    const_iterator end() const {
-        return {&links, links.end(), End_const};
-    }
 
-    void insert(const pair<KeyType, ValueType>& pr) {
-        _insert(pr);
-        _check_cur_size();
-    }
-    void erase(const KeyType& key) {
-        iterator ind = find(key);
-        if (ind == end())
-            return;
-        (*ind.link)->erase(ind.elem);
-        --cur_size;
-        if ((*ind.link)->empty()) {
+            bool operator==(const base_iterator_ &other) {
+                if (outer_ == other.outer_ && outer_ == end_of_table_) return true;
+                return outer_ == other.outer_ && inner_ == other.inner_;
+            }
+
+            bool operator!=(const base_iterator_ &other) {
+                return !(*this == other);
+            }
+
+        protected:
+            OuterIter outer_;
+            InnerIter inner_;
+            OuterIter end_of_table_;
+        };
+
+     public:
+        explicit HashMap(Hash h = Hash()) : hasher(h) {}
+
+        template<class InputIterator>
+        HashMap(const InputIterator &begin, const InputIterator &end, Hash h = Hash()): HashMap(h) {
+            for (auto it = begin; it != end; ++it)
+                insert(*it);
+        }
+
+        HashMap(const std::initializer_list<std::pair<KeyType, ValueType>>& init, Hash h = Hash()) : HashMap(init.begin(),
+                                                                                                      init.end(), h) {}
+
+        size_t size() const {
+            return len;
+        }
+
+        bool empty() const {
+            return len == 0;
+        }
+
+        Hash hash_function() const {
+            return hasher;
+        }
+
+        typedef typename std::vector<Cell>::iterator OuterNotConstIter;
+        typedef typename Cell::iterator InnerNotConstIter;
+        class iterator : public base_iterator_<OuterNotConstIter, InnerNotConstIter> {
+            using base_iterator_<OuterNotConstIter, InnerNotConstIter>::outer_;
+            using base_iterator_<OuterNotConstIter, InnerNotConstIter>::inner_;
+            using base_iterator_<OuterNotConstIter, InnerNotConstIter>::end_of_table_;
+            using base_iterator_<OuterNotConstIter, InnerNotConstIter>::base_iterator_;
+        public:
+
+            std::pair<const KeyType, ValueType> &operator*() {
+                return reinterpret_cast<std::pair<const KeyType, ValueType> &>(*inner_);
+            }
+
+            std::pair<const KeyType, ValueType> *operator->() {
+                return reinterpret_cast<std::pair<const KeyType, ValueType>*>(&*inner_);
+            }
+        };
+
+        iterator begin() {
+            if (!table.empty())
+                return { table.begin(), table.front().begin(), table.end() };
+            else
+                return { table.end(), typename Cell::iterator(), table.end() };
+        }
+
+        iterator end() {
+            return { table.end(), typename Cell::iterator(), table.end() };
+        }
+
+        typedef typename std::vector<Cell>::const_iterator OuterConstIter;
+        typedef typename Cell::const_iterator InnerConstIter;
+        class const_iterator : public base_iterator_<OuterConstIter, InnerConstIter> {
+            using base_iterator_<OuterConstIter, InnerConstIter>::outer_;
+            using base_iterator_<OuterConstIter, InnerConstIter>::inner_;
+            using base_iterator_<OuterConstIter, InnerConstIter>::end_of_table_;
+            using base_iterator_<OuterConstIter, InnerConstIter>::base_iterator_;
+        public:
+            const std::pair<const KeyType, ValueType> &operator*() const {
+                return reinterpret_cast<const std::pair<const KeyType, ValueType> &>(*inner_);
+            }
+
+            const std::pair<const KeyType, ValueType> *operator->() const {
+                return reinterpret_cast<const std::pair<const KeyType, ValueType>*>(&*inner_);
+            }
+        };
+
+        const_iterator begin() const {
+            if (!table.empty())
+                return { table.cbegin(), table.front().cbegin(), table.cend() };
+            else
+                return { table.cend(), typename Cell::iterator(), table.cend() };
+        }
+
+        const_iterator end() const {
+            return { table.end(), typename Cell::iterator(), table.end() };
+        }
+
+        void insert(const std::pair<KeyType, ValueType> &pr) {
+            _check_len();
+            _insert(pr);
+        }
+
+        void erase(const KeyType &key) {
+            if (table.size() == 0)
+                return;
             size_t k = hasher(key) % table.size();
-            table[k] = e_table;
-            delete *ind.link;
-            links.erase(ind.link);
+            for (auto it = table[k].begin(); it != table[k].end(); ++it) {
+                if (it->first == key) {
+                    table[k].erase(it);
+                    --len;
+                    return;
+                }
+            }
         }
-    }
-    iterator find(const KeyType& key) {
-        if (table.size() == 0)
-            return end();
-        size_t k = hasher(key) % table.size();
-        if (table[k] == e_table) {
-            return end();
-        }
-        for (typename list<pair<const KeyType, ValueType>>::iterator ind = (*table[k])->begin(); ind != (*table[k])->end(); ++ind)
-            if (ind->first == key)
-                return {&links, table[k], ind};
-        return end();
-    }
-    const_iterator find(const KeyType& key) const {
-        if (table.size() == 0)
-            return end();
-        size_t k = hasher(key) % table.size();
-        if (table[k] == e_table) {
+
+        iterator find(const KeyType &key) {
+            if (table.size() == 0)
+                return end();
+            size_t k = hasher(key) % table.size();
+            for (auto it = table[k].begin(); it != table[k].end(); ++it) {
+                if (it->first == key) {
+                    return {table.begin() + k, it, table.end()};
+                }
+            }
             return end();
         }
-        for (typename list<pair<const KeyType, ValueType>>::const_iterator ind = (*table[k])->begin(); ind != (*table[k])->end(); ++ind)
-            if (ind->first == key)
-                return {&links, table[k], ind};
-        return end();
-    }
-    ValueType& operator[](const KeyType& key) {
-        auto ind = find(key);
-        if (ind == end()) {
-            insert({key, ValueType()});
-            ind = find(key);
+
+        const_iterator find(const KeyType &key) const {
+            if (table.size() == 0)
+                return end();
+            size_t k = hasher(key) % table.size();
+            for (auto it = table[k].begin(); it != table[k].end(); ++it) {
+                if (it->first == key) {
+                    return {table.begin() + k, it, table.end()};
+                }
+            }
+            return end();
         }
-        return ind->second;
-    }
-    const ValueType& at(const KeyType& key) const {
-        auto ind = find(key);
-        if (ind == end())
-            throw out_of_range("error");
-        return ind->second;
-    }
-    void clear() {
-        table.clear();
-        for (const auto& el : links) {
-            delete el;
+
+        ValueType &operator[](const KeyType &key) {
+            auto ind = find(key);
+            if (ind == end()) {
+                insert({key, ValueType()});
+                ind = find(key);
+            }
+            return ind->second;
         }
-        links.clear();
-        cur_size = 0;
-    }
-};
+
+        const ValueType &at(const KeyType &key) const {
+            auto ind = find(key);
+            if (ind == end())
+                throw std::out_of_range("method at don't found key");
+            return ind->second;
+        }
+
+        void clear() {
+            table.clear();
+            len = 0;
+        }
+
+    private:
+        double max_load = 1.0 / 2;
+        Hash hasher;
+        size_t len = 0;
+        std::vector <Cell> table;
+
+        inline void _insert(const std::pair<KeyType, ValueType> &pr) {
+            if (table.size() == 0) {
+                table.resize(1);
+            }
+            size_t k = hasher(pr.first) % table.size();
+            auto it = find(pr.first);
+            if (it == end()) {
+                table[k].push_front(pr);
+                ++len;
+            }
+        }
+
+        inline bool _check_len() {
+            if (len < max_load * table.size())
+                return false;
+            size_t k = table.size();
+            std::vector<Cell> buff = table;
+            table.clear();
+            table.resize(k << 1);
+            len = 0;
+            for (const auto& row : buff)
+                for (const auto& elem : row)
+                    _insert(elem);
+            return true;
+        }
+    };
+}
+template<class KeyType, class ValueType, class Hash = std::hash<KeyType>>
+        using HashMap = MyHashMap::HashMap<KeyType, ValueType, Hash>;
+
